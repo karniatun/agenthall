@@ -2,16 +2,33 @@
 pragma solidity ^0.8.26;
 
 /**
- * @title AgentHall
+ * @title AgentHall (v2)
  * @notice A check-in hall for Agent ID holders on BNB Smart Chain (BSC).
  *
  *         AgentHall lets a wallet that holds an Agent ID (the non-transferable
  *         ERC-721 "name.ai" identity issued through the Binance App) register
  *         itself once and then check in once per UTC day, building a public
- *         daily streak. Registration binds the wallet address to the Agent ID
- *         tokenId it currently holds.
+ *         daily streak. Registration records the holder's wallet address once
+ *         it passes the Agent ID `balanceOf` gate. The hall deliberately does
+ *         NOT store the Agent ID tokenId (see the v2 note below) — a wallet's
+ *         .ai name is resolved off-chain from its address by the front-end
+ *         (SPACE ID Web3 Name SDK), not by this contract.
  *
- * @dev OWNER POWERS — FULL DISCLOSURE (hackathon red-line requirement)
+ * @dev V2 NOTE — WHY THE ON-CHAIN TOKENID BINDING WAS REMOVED
+ *      V1 (first deployment: 0x39d834FD374A34768C23c19d053B522489c4FF7e,
+ *      source archived as AgentHall-v1.sol) bound each registration to the
+ *      caller's Agent ID tokenId via `tokenOfOwnerByIndex(msg.sender, 0)`.
+ *      That function belongs to ERC721Enumerable, which the official Agent
+ *      ID contract does NOT implement (supportsInterface(0x780e9d63) ==
+ *      false; the call reverts on-chain, as do `totalSupply` and any
+ *      label-hash tokenId derivation probe). As a result, v1's register()
+ *      reverted for EVERY real Agent ID holder — the bug only stayed hidden
+ *      because v1's local mock implemented the enumerable interface.
+ *      V2 therefore gates registration on `balanceOf` alone — the one
+ *      Agent ID read that is live on-chain (isAgentHolder returns true for
+ *      real wallets) — and stores no tokenId anywhere.
+ *
+ *      OWNER POWERS — FULL DISCLOSURE (hackathon red-line requirement)
  *      The contract has a single `owner` (the deployer, changeable only via
  *      `transferOwnership`). The owner can do EXACTLY the following, and
  *      nothing else:
@@ -27,7 +44,7 @@ pragma solidity ^0.8.26;
  *        - register, check in, edit, or delete another user's record;
  *        - change the Agent ID contract address after deployment (it is
  *          `immutable`);
- *        - alter streaks, counters, or bindings in any way.
+ *        - alter streaks or counters in any way.
  *      There is no proxy, no upgrade mechanism, and no hidden admin path.
  *
  *      FUNDS: This contract is non-custodial and non-payable by design. It
@@ -42,9 +59,12 @@ pragma solidity ^0.8.26;
 /// @notice Minimal read interface of the official Agent ID contract on BSC:
 ///         0x60b9262456de011f7d15a54cdd8c48baaa8b022f
 ///         (SPACE ID "Agent ID", symbol AI, ERC-721, non-transferable, max 1 per wallet)
+/// @dev Only `balanceOf` is declared, on purpose: it is the single read the
+///      real contract reliably exposes. The real contract does NOT implement
+///      ERC721Enumerable, so `tokenOfOwnerByIndex` / `totalSupply` must
+///      never be (re)added here — calls to them revert on-chain (v1 bug).
 interface IAgentID {
     function balanceOf(address owner) external view returns (uint256);
-    function tokenOfOwnerByIndex(address owner, uint256 index) external view returns (uint256);
 }
 
 contract AgentHall {
@@ -53,7 +73,6 @@ contract AgentHall {
     // ---------------------------------------------------------------------
 
     struct Agent {
-        uint256 tokenId;        // Agent ID tokenId bound at registration time
         uint256 registeredAt;   // block.timestamp of registration
         uint256 totalCheckIns;  // lifetime check-in count for this agent
         uint256 currentStreak;  // consecutive UTC days checked in
@@ -82,8 +101,8 @@ contract AgentHall {
     // Events
     // ---------------------------------------------------------------------
 
-    event Registered(address indexed agent, uint256 tokenId);
-    event CheckedIn(address indexed agent, uint256 tokenId, uint256 day, uint256 streak);
+    event Registered(address indexed agent);
+    event CheckedIn(address indexed agent, uint256 day, uint256 streak);
     event Paused(address indexed by);
     event Unpaused(address indexed by);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
@@ -161,23 +180,23 @@ contract AgentHall {
     // ---------------------------------------------------------------------
 
     /// @notice Register the caller in the hall.
-    ///         Requires: caller currently holds an Agent ID, and has not
-    ///         registered before. Binds caller -> their Agent ID tokenId.
+    ///         Requires: caller currently holds an Agent ID (balanceOf > 0
+    ///         on the official Agent ID contract), and has not registered
+    ///         before. Records the caller's address only — no tokenId is
+    ///         read or stored, because the Agent ID contract exposes no
+    ///         enumerable interface (see the v2 note in the header).
     function register() external whenNotPaused {
         if (agentId.balanceOf(msg.sender) == 0) revert NotAgentHolder();
         Agent storage a = _agents[msg.sender];
         if (a.registered) revert AlreadyRegistered();
 
-        uint256 tokenId = agentId.tokenOfOwnerByIndex(msg.sender, 0);
-
-        a.tokenId = tokenId;
         a.registeredAt = block.timestamp;
         a.registered = true;
         // totalCheckIns / currentStreak / lastCheckInDay start at 0.
 
         _agentList.push(msg.sender);
 
-        emit Registered(msg.sender, tokenId);
+        emit Registered(msg.sender);
     }
 
     /// @notice Check in for today (UTC). One check-in per registered agent
@@ -203,7 +222,7 @@ contract AgentHall {
         a.lastCheckInDay = day;
         _totalCheckInsAll += 1;
 
-        emit CheckedIn(msg.sender, a.tokenId, day, a.currentStreak);
+        emit CheckedIn(msg.sender, day, a.currentStreak);
     }
 
     // ---------------------------------------------------------------------
@@ -221,7 +240,6 @@ contract AgentHall {
     }
 
     /// @notice Full record for a registered agent.
-    /// @return tokenId       Agent ID tokenId bound at registration
     /// @return registeredAt  Registration timestamp (seconds)
     /// @return totalCheckIns Lifetime check-ins by this agent
     /// @return currentStreak Current consecutive-day streak
@@ -230,7 +248,6 @@ contract AgentHall {
         external
         view
         returns (
-            uint256 tokenId,
             uint256 registeredAt,
             uint256 totalCheckIns,
             uint256 currentStreak,
@@ -238,7 +255,7 @@ contract AgentHall {
         )
     {
         Agent storage a = _agents[account];
-        return (a.tokenId, a.registeredAt, a.totalCheckIns, a.currentStreak, a.lastCheckInDay);
+        return (a.registeredAt, a.totalCheckIns, a.currentStreak, a.lastCheckInDay);
     }
 
     /// @notice Total number of registered agents.
