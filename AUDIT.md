@@ -53,3 +53,13 @@ E4 Gas measured on Ganache: deploy 699.639 · register pertama 144.333 · checkI
 - Consider renouncing ownership after the submission period ends to retire the pause power.
 
 Reference only, not investment advice.
+
+## Addendum — v2 redeploy (2026-11-18)
+
+V1 (0x39d834FD374A34768C23c19d053B522489c4FF7e) is BROKEN and superseded: its register() called tokenOfOwnerByIndex on the official Agent ID contract, which does not implement ERC721Enumerable (live-probed: supportsInterface(0x780e9d63) = false; the call reverts), so register() reverted for every real Agent ID holder. No funds were ever at risk — the contract is non-custodial and no registration ever succeeded.
+
+V2: 0x08B9F63F9772F04bdc998F7BF8d9271AD5413885 · deploy tx 0x0a1101dffeab579b9d072a471a13682a31cc490739cd478062c659d8e50e93ee · block 134318825 · gasUsed 662,079 · cost 0.00003310395 BNB.
+Changes: tokenId binding removed; register() gate = balanceOf > 0 only; MockAgentID rewritten to mirror the real Agent ID contract (no enumerable functions); regression test added. 14/14 tests pass.
+Audit delta on the v2 deployed bytecode: selectors transfer / transferFrom / approve / withdraw / setApprovalForAll / safeTransferFrom / mint / tokenOfOwnerByIndex all ABSENT; payable functions: none.
+Live proof: eth_call register() from all three agent wallets (ald / rakryan / yop) succeeds against v2 — the same call reverted against v1.
+Sourcify: exact_match (runtime), matchId 59470110, verifiedAt 2026-11-18T13:25:04Z.

@@ -130,3 +130,72 @@ tidak punya bytecode dan tidak di-deploy.)
 - Leaderboard web saat ini menampilkan 10 registrasi terakhir + streak
   masing-masing (dibaca via getAgents + getAgent) — cukup untuk v1; ranking
   streak global penuh butuh indexer event bila jumlah agen besar.
+
+---
+
+## V2 — revisi pasca-deploy v1 (18 Nov 2026)
+
+**Status v1:** v1 SUDAH ter-deploy di BSC mainnet pada
+`0x39d834FD374A34768C23c19d053B522489c4FF7e` (Sourcify exact_match), TAPI
+register()-nya tidak pernah bisa dipakai — lihat bug di bawah. Source v1
+diarsipkan verbatim sebagai `contracts/AgentHall-v1.sol` (app + repo).
+
+**Bug v1 (terbukti on-chain):** register() v1 memanggil
+`tokenOfOwnerByIndex(msg.sender, 0)` pada kontrak Agent ID resmi
+`0x60b9262456de011f7d15a54Cdd8c48bAaa8B022F` untuk binding tokenId.
+Kontrak asli TIDAK mengimplementasikan ERC721Enumerable
+(`supportsInterface(0x780e9d63)` = false; `tokenOfOwnerByIndex` dan
+`totalSupply` revert), jadi register() revert untuk SEMUA pemegang
+Agent ID asli. Test lokal v1 lolos 13/13 hanya karena MockAgentID lama
+mengimplementasikan fungsi enumerable itu. Probe ketua atas derivasi
+tokenId = `keccak256(label)` juga TIDAK cocok (ownerOf revert) — v2
+tidak memakai jalur derivasi apa pun.
+
+**Perubahan perilaku/ABI v1 → v2:**
+
+- register() hanya memakai gate `balanceOf(msg.sender) > 0`; tidak ada
+  panggilan enumerable sama sekali. Interface `IAgentID` kini hanya
+  mendeklarasikan `balanceOf`.
+- Binding tokenId on-chain DIHAPUS:
+  - struct `Agent` tanpa field `tokenId`;
+  - event `Registered(address indexed agent)` — tanpa tokenId;
+  - event `CheckedIn(address indexed agent, uint256 day, uint256 streak)`
+    — tanpa tokenId;
+  - `getAgent` mengembalikan 4 field: `(registeredAt, totalCheckIns,
+    currentStreak, lastCheckInDay)`.
+  Identitas/nama .ai tetap ditangani frontend via SPACE ID SDK dari
+  alamat wallet — bukan urusan kontrak.
+- MockAgentID ditulis ulang meniru kontrak asli: hanya `balanceOf`
+  (+ helper test setHolder/removeHolder), secara eksplisit TANPA
+  `tokenOfOwnerByIndex`/`totalSupply`.
+- Test regresi baru: register + checkIn berhasil terhadap mock
+  non-enumerable, plus assertion bahwa mock dan ABI AgentHall tidak
+  mengekspos fungsi enumerable apa pun.
+- Perilaku lain identik v1: register sekali per wallet, checkIn 1x/hari
+  UTC dengan streak reset bila bolong, pause/transferOwnership/
+  renounceOwnership owner-only, `agentId` immutable, tanpa fungsi
+  transfer/approve/withdraw/mint, tanpa receive/fallback payable.
+- `web/config.js`: ABI AgentHall + Agent ID diperbarui ke v2
+  (`agentHallAddress` TIDAK diubah di langkah ini — ketua mengisi
+  alamat v2 setelah deploy). `web/app.js` tidak berubah: ia hanya
+  membaca field bernama `currentStreak`/`totalCheckIns` dari getAgent.
+- README repo: klaim "binds token ID" dihapus, diganti penjelasan gate
+  balanceOf + pencatatan alamat (tabel alamat kontrak tidak diubah di
+  langkah ini — urusan ketua pasca-deploy v2).
+
+**Hasil v2 (lokal, toolchain sama: solc-js 0.8.26+commit.8a97fa7a,
+optimizer 200 runs, evm paris):**
+
+| Item | v1 | v2 |
+|---|---|---|
+| Deployed bytecode AgentHall | 2.870 byte | **2.695 byte** |
+| Unit test | 13/13 | **14/14 LULUS** (stabil 2 run berturut-turut; 13 skenario v1 disesuaikan ABI + 1 regresi) |
+| Gas deploy (Ganache) | 699.639 | **662.079** |
+| Gas register() pertama | 144.333 | **118.704** |
+| Gas checkIn() pertama | 118.813 | **116.450** |
+
+**Langkah ketua berikutnya (BELUM dilakukan di revisi ini):** deploy v2
+ke BSC → verifikasi Sourcify/BscScan → isi `agentHallAddress` di
+`web/config.js` (app + repo) dengan alamat v2 → perbarui tabel kontrak
+di README repo → uji live register + checkIn dengan wallet pemegang
+Agent ID asli.

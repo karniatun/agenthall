@@ -16,8 +16,8 @@ recorded on-chain, and a public leaderboard shows who keeps showing up.
    connection — no QR pairing, no seed phrase, nothing is ever asked
    beyond a signature in your own wallet).
 2. **Register** — the contract checks that your wallet actually holds an
-   Agent ID and binds your Agent ID token to your registration.
-   One registration per wallet.
+   Agent ID (a `balanceOf` gate on the official contract) and records
+   your wallet address in the hall. One registration per wallet.
 3. **Check in** — once per UTC day. Consecutive days build your streak;
    miss a day and the streak resets, but your total check-ins and your
    registration stay yours forever.
@@ -34,8 +34,12 @@ Agent ID is the gate and the identity of the hall — not a decoration:
 - `register()` calls `balanceOf(msg.sender)` on that contract and
   reverts unless it is greater than zero — only real Agent ID holders
   can enter.
-- On registration the contract reads `tokenOfOwnerByIndex(msg.sender, 0)`
-  and permanently binds that Agent ID token ID to the registration.
+- Registration records the holder's wallet address on-chain. The hall
+  never reads or stores the Agent ID token ID: the official Agent ID
+  contract does not expose ERC721Enumerable (`tokenOfOwnerByIndex`
+  reverts on it), so the contract deliberately relies on `balanceOf`
+  alone, and your `.ai` name is resolved from your address by the
+  front-end via the SPACE ID SDK.
 - `isAgentHolder(address)` re-checks the official contract live, so the
   hall always reflects who currently holds an Agent ID.
 
@@ -43,12 +47,14 @@ Agent ID is the gate and the identity of the hall — not a decoration:
 
 | | |
 |---|---|
-| Contract | `0x39d834FD374A34768C23c19d053B522489c4FF7e` |
+| Contract | `0x08B9F63F9772F04bdc998F7BF8d9271AD5413885` |
 | Network | BNB Smart Chain (chain ID 56) |
-| Deploy tx | `0x87a83cfd08701a19550d5f6061c5be15beac901afed8dde7a3e058e67e788ea6` |
+| Deploy tx | `0x0a1101dffeab579b9d072a471a13682a31cc490739cd478062c659d8e50e93ee` |
 | Source | [`contracts/AgentHall.sol`](contracts/AgentHall.sol) in this repo |
-| Verification | Sourcify **exact match** (creation + runtime code) — [look it up](https://sourcify.dev/#/lookup/0x39d834FD374A34768C23c19d053B522489c4FF7e) |
-| Explorer | [BscScan](https://bscscan.com/address/0x39d834FD374A34768C23c19d053B522489c4FF7e) |
+| Verification | Sourcify **exact match** (runtime code) — [look it up](https://sourcify.dev/#/lookup/0x08B9F63F9772F04bdc998F7BF8d9271AD5413885) |
+| Explorer | [BscScan](https://bscscan.com/address/0x08B9F63F9772F04bdc998F7BF8d9271AD5413885) |
+
+> **Deployment history:** the first deployment (v1, `0x39d834FD374A34768C23c19d053B522489c4FF7e`, 2026-11-18) was superseded the same day by the v2 contract above. V1's `register()` depended on `tokenOfOwnerByIndex`, which the official Agent ID contract does not implement, so it reverted for every real holder. V1 is preserved for transparency in [`contracts/AgentHall-v1.sol`](contracts/AgentHall-v1.sol); do not use it.
 
 The deployed bytecode contains no token-transfer, approval, withdrawal
 or mint functions at all — see [`AUDIT.md`](AUDIT.md) for the pre-deploy
