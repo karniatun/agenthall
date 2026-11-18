@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AgentHall — the check-in hall for Agent ID holders</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font-family: system-ui, sans-serif; margin: 0; background: #0d1117; color: #e6edf3; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 28px; margin-bottom: 4px; }
+  .sub { color: #9da7b3; margin-top: 0; }
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 16px; margin: 16px 0; }
+  button { background: #4f7cff; color: #fff; border: 0; border-radius: 8px; padding: 10px 18px;
+           font-weight: 600; cursor: pointer; margin-right: 8px; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.secondary { background: #21262d; color: #e6edf3; border: 1px solid #30363d; }
+  .stat { display: inline-block; margin-right: 24px; }
+  .stat b { font-size: 22px; display: block; }
+  .stat span { color: #9da7b3; font-size: 13px; }
+  #status { white-space: pre-wrap; word-break: break-word; color: #9da7b3; font-size: 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  td, th { padding: 6px 4px; border-bottom: 1px solid #21262d; text-align: left; }
+  .note { font-size: 13px; color: #9da7b3; }
+  /* The project name and page copy intentionally do not use exchange or
+     chain brand names as part of the product name. */
+</style>
+</head>
+<body>
+<main>
+  <h1>🏛️ AgentHall</h1>
+  <p class="sub">The check-in hall for Agent ID holders. Register once with your
+     <b>.ai</b> identity, then check in every day and keep your streak alive.</p>
+
+  <div class="card">
+    <button id="btn-connect">Connect wallet</button>
+    <span id="who"></span>
+    <p id="status">Not connected.</p>
+    <button id="btn-register" disabled>Register</button>
+    <button id="btn-checkin" class="secondary" disabled>Check in today</button>
+  </div>
+
+  <div class="card">
+    <div class="stat"><b id="stat-agents">–</b><span>registered agents</span></div>
+    <div class="stat"><b id="stat-checkins">–</b><span>total check-ins</span></div>
+    <div class="stat"><b id="stat-my-streak">–</b><span>my streak (days)</span></div>
+    <div class="stat"><b id="stat-my-total">–</b><span>my check-ins</span></div>
+  </div>
+
+  <div class="card">
+    <h3>Leaderboard — latest registrations</h3>
+    <table>
+      <thead><tr><th>#</th><th>Agent</th><th>Check-ins</th><th>Streak</th></tr></thead>
+      <tbody id="leaderboard"><tr><td colspan="4" class="note">Connect or refresh to load.</td></tr></tbody>
+    </table>
+    <p><button id="btn-refresh" class="secondary">Refresh stats</button></p>
+  </div>
+
+  <p class="note">
+    AgentHall is non-custodial: it never holds funds, never asks for approvals,
+    and every action is a transaction you sign yourself in your own wallet.
+    Holding an Agent ID is required to register. Gas is paid by your wallet as
+    with any on-chain transaction.
+  </p>
+</main>
+
+<!-- ethers v6 (UMD build exposes window.ethers) -->
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
+<!-- SPACE ID Web3 Name SDK (ES module) — exposes window.__spaceIdWeb3Name.
+     TODO: verify the current CDN entry point against docs.space.id at deploy
+     time and pin an exact version; the UI degrades gracefully (shows raw
+     addresses) if this fails to load. -->
+<script type="module">
+  try {
+    const mod = await import("https://cdn.jsdelivr.net/npm/@web3-name-sdk/core@1.0.0/dist/index.js");
+    const create = mod.createWeb3Name || (mod.default && mod.default.createWeb3Name);
+    if (create) window.__spaceIdWeb3Name = create();
+  } catch (e) { console.warn("SPACE ID SDK load failed:", e); }
+</script>
+<script src="config.js"></script>
+<script src="name-resolver.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
